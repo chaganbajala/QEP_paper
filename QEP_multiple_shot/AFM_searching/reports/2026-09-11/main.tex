@@ -1,0 +1,645 @@
+\documentclass[11pt]{article}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,graphicx,hyperref,microtype,subcaption}
+\usepackage{xcolor,placeins}
+\graphicspath{{../../figures/shots_2026-09-11/}}
+\hypersetup{colorlinks=true,linkcolor=blue!55!black,urlcolor=blue!55!black}
+
+\title{Finite-shot quantum equilibrium propagation for\\antiferromagnetic phase searching}
+\author{}
+\date{16 September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study how the number of measurements used for a quantum-equilibrium-propagation
+(QEP) gradient affects training toward antiferromagnetic order.  The experiments use
+open Ising chains of five and nine spins, train the squared staggered magnetisation
+$\langle\mathrm{AFM}^2\rangle$ toward one, and vary the fixed shot count $N_g$.
+The study separates conditional gradient noise from output-measurement noise, compares
+multi-seed parameter paths, and measures performance both by epoch and by total
+gradient-shot budget.  All numerical conclusions in this report are based on the
+production data described in Sec.~\ref{sec:reproducibility}.
+\end{abstract}
+
+\section{Model and estimator}
+\label{sec:model}
+
+For an open chain of $N$ spins, the final system Hamiltonian is
+\begin{equation}
+H(\Omega,\Delta)=\frac{\Omega}{2}\sum_i\sigma_i^x
+-\Delta\sum_i n_i+\sum_{i=1}^{N-1} n_i n_{i+1},
+\qquad n_i=\frac{1+\sigma_i^z}{2}.
+\end{equation}
+The interaction has no additional factor $1/2$; this is the convention of
+\texttt{qep\_shot.afm.Ising\_Chain} and of the phase diagrams used below.  We train
+the order parameter
+\begin{equation}
+\mathrm{AFM}=\frac{1}{N}\sum_i(-1)^i\sigma_i^z,
+\qquad C=\mathrm{AFM}^2,
+\end{equation}
+toward the target $C=1$.  The field schedules and the QEP nudge use the cosine ramp
+$s(x)=[1-\cos(\pi x)]/2$ on $x\in[0,1]$, so the nudge has zero slope at both ends.
+The free and nudged equilibrium states are obtained by exact diagonalisation of the
+final Hamiltonians.
+
+For a trainable parameter $\theta\in\{\Omega,\Delta\}$, the finite-shot estimator is
+\begin{equation}
+\widehat g_\theta(\beta)=
+\frac{\overline{A}_{\theta,\beta}-\overline{A}_{\theta,0}}{\beta},
+\qquad A_\theta=\partial_\theta H .
+\end{equation}
+Conditional on the measured output $\bar y$, independent free and nudged shot sets give
+\begin{equation}
+\operatorname{Var}(\widehat g_\theta\mid\bar y)=
+\frac{\operatorname{Var}_\beta(A_\theta)+
+      \operatorname{Var}_0(A_\theta)}{N_g\beta^2}.
+\label{eq:variance}
+\end{equation}
+Because $A_\Omega$ and $A_\Delta$ are measured in noncommuting $X$ and $Z$ bases,
+respectively, each of the free and nudged states requires an independent group of
+$N_g$ shots per component.  One epoch therefore costs $4N_g$ individual gradient
+measurement preparations, excluding the $N_y$ output shots used to measure the
+trained observable.  An earlier version of this report (through 14 September 2026)
+instead quoted $2N_gN_{\rm epoch}$, treating a free/nudged pair as one shared
+``paired preparation''; Sec.~\ref{sec:solver-accuracy} documents this correction,
+made together with a related ground-state-solver accuracy finding on 14--15
+September 2026.  The $N=5$ figures dated 2026-09-15 and the $N=9$ figures dated
+2026-09-16 discussed in Sec.~\ref{sec:performance} and Sec.~\ref{sec:budget} below
+use the corrected $4N_gN_{\rm epoch}$ axis; the remaining, unreplicated $N=9$
+figures (the phase panels of Sec.~\ref{sec:paths} and the expanded-seed budget
+check of Fig.~\ref{fig:budget-noise-check}) still display the original
+$2N_gN_{\rm epoch}$ paired-preparation axis, which is noted explicitly wherever it
+appears.
+
+Every training uses $\beta=0.1$, learning rate $\eta=0.01$, $N_y=100$ output shots,
+and a fixed $N_g$; no adaptive controller is used.  Three random initial points were
+drawn once with seed 20260911 and fixed at
+\begin{equation}
+(1.0285,2.1162),\quad(0.6955,1.9557),\quad(0.8875,1.6021).
+\end{equation}
+These three points, with five independent paths of 200 epochs each, underlie the
+phase panels of Sec.~\ref{sec:paths} for $N=9$, the original single-fixed-start
+$N=9$ budget dataset of Sec.~\ref{sec:budget}, and the measured-versus-exact
+comparison of Fig.~\ref{fig:measured-exact} for both sizes.  For $N=5$
+(2026-09-15) and, since 2026-09-16, for $N=9$ as well,
+Sec.~\ref{sec:performance}'s performance/budget curves instead draw on an
+expanded ensemble of ten initial points (these three plus seven more, drawn the
+same way, shared between the two sizes) $\times$ five seeds each, described where
+it is used.  For $N=5$ only, Sec.~\ref{sec:paths}'s phase panels additionally draw
+on an illustrative subset of that same expanded ensemble (Fig.~\ref{fig:paths}
+caption); the $N=9$ phase panels were not re-selected from it and still show the
+original three points above.
+
+\section{Results}
+
+\subsection{Gradient distributions}
+
+For this figure the output is always the exact ground-state expectation
+$y=\langle\mathrm{AFM}^2\rangle_{\rm GS}$; it is never replaced by a finite-shot
+estimate.  Only the free and nudged gradient observables are resampled.  This isolates
+the direct test of Eq.~\eqref{eq:variance} from output-measurement noise.  Every
+distribution is shown together with the exact shot-free expectation of the QEP
+gradient at the same finite $\beta$.
+
+
+At the representative point $(\Omega,\Delta)=(0.5,1.5)$ and $\beta=0.1$, the exact
+ground-state outputs are 0.6705 and 0.5072 for $N=5$ and
+9\footnote{Validating the new \texttt{shot\_study/exact\_solver.py}
+(Sec.~\ref{sec:solver-accuracy}) against these two numbers found
+$0.671697$ and $0.513241$ at the same point instead -- a $\sim$0.1--1\% gap consistent
+with JAX's default complex64 precision at the time these two reference values were
+first computed, not the unrelated 100-iteration training-solver bias discussed in
+Sec.~\ref{sec:solver-accuracy}.}, and the exact QEP-gradient
+expectations are respectively $(0.6873,0.3305)$ and $(1.7718,0.8372)$.  The sampled
+histograms contract visibly onto those references.  Log--log fits of standard deviation
+against $N_g$ give exponents $(-0.498,-0.488)$ for $(g_\Omega,g_\Delta)$ at $N=5$ and
+$(-0.494,-0.496)$ at $N=9$, in quantitative agreement with $N_g^{-1/2}$.  For example,
+the $N=9$ standard deviations shrink from $(5.99,3.81)$ at $N_g=10$ to
+$(0.186,0.123)$ at $N_g=10{,}000$.
+
+At fixed $N_g=1000$, the standard deviation grows monotonically as $\beta$ is reduced,
+consistent with the $1/\beta$ amplification in Eq.~\eqref{eq:variance}; there is no
+intermediate minimum in variance alone.  The total RMSE relative to the exact
+$\beta=0.01$ gradient is U-shaped because large $\beta$ introduces finite-difference
+bias.  Its component-wise minima occur at $(0.5,0.5)$ for $N=5$ and $(0.5,0.2)$ for
+$N=9$.  This distinction between variance and total estimation error explains the
+otherwise ambiguous ``optimal $\beta$'' expectation.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_distribution_ng_N5.pdf}\caption{$N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_distribution_ng_N9.pdf}\caption{$N=9$}\end{subfigure}
+  \caption{Finite-shot gradient distributions as $N_g$ changes.  The output in every
+  sample is the exact ground-state expectation $\langle\mathrm{AFM}^2\rangle_{\rm GS}$;
+  the vertical reference lines are the exact shot-free expectations of the corresponding
+  finite-$\beta$ QEP gradient components.}
+  \label{fig:gradient-distributions}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_std_scaling_N5.pdf}\caption{$N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_std_scaling_N9.pdf}\caption{$N=9$}\end{subfigure}
+  \caption{Conditional gradient standard deviation versus $N_g$. Dashed lines are
+  log--log fits.}
+  \label{fig:gradient-scaling}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N5.pdf}\caption{$N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N9.pdf}\caption{$N=9$}\end{subfigure}
+  \caption{Noise amplification and total finite-$\beta$ tradeoff at fixed $N_g=1000$.}
+  \label{fig:beta-tradeoff}
+\end{figure}
+
+Three supplementary $\beta$ scans at $N_g=10,100,10000$ were added on 2026-09-14 to
+complement the $N_g=1000$ scan above, using the same seven $\beta$ values, 256
+repetitions, exact ground-state output, and fixed representative point.  Both gradient
+components' sampled RMSE reaches its minimum at the largest scanned value $\beta=1$
+for $N=5$ at every one of these three additional shot counts and for $N=9$ at
+$N_g=10$; at $N=9$, $N_g=100$ both minima instead occur at $\beta=0.5$.  At
+$N_g=10000$ both components' RMSE minimum moves inward to $\beta=0.2$ for both $N=5$
+and $N=9$.  A boundary minimum at $\beta=1$ does not locate a true optimum beyond the
+scanned range; only the $N_g=1000$ and $N_g=10000$ scans show an interior minimum for
+both sizes.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N5_Ng10.pdf}\caption{$N=5$, $N_g=10$}\end{subfigure}
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N5_Ng100.pdf}\caption{$N=5$, $N_g=100$}\end{subfigure}
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N5_Ng10000.pdf}\caption{$N=5$, $N_g=10000$}\end{subfigure}
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N9_Ng10.pdf}\caption{$N=9$, $N_g=10$}\end{subfigure}
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N9_Ng100.pdf}\caption{$N=9$, $N_g=100$}\end{subfigure}
+  \begin{subfigure}{0.32\linewidth}\includegraphics[width=\linewidth]{gradient_beta_tradeoff_N9_Ng10000.pdf}\caption{$N=9$, $N_g=10000$}\end{subfigure}
+  \caption{Supplementary $\beta$ noise--bias tradeoff scans at $N_g=10,100,10000$
+  (Fig.~\ref{fig:beta-tradeoff} shows $N_g=1000$), same 256-repetition
+  exact-ground-state-output protocol.}
+  \label{fig:beta-tradeoff-supp}
+\end{figure}
+
+\FloatBarrier
+\subsection{From random walks to smooth parameter paths}
+\label{sec:paths}
+
+
+The geometric transition is clear for both sizes.  For $N=5$, increasing $N_g$ from
+10 to 10,000 reduces the median path-length/endpoint ratio from 11.39 to 1.10 and
+raises the mean cosine between adjacent steps from $-0.006$ to 0.693.  The corresponding
+$N=9$ values change from 11.47 to 1.22 and from 0.032 to 0.496.  Thus low-shot paths
+are locally almost uncorrelated random walks, whereas high-shot replicas from the same
+initial point nearly collapse onto a smooth common curve.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{phase_trajectories_N5_Ng10.pdf}\caption{$N=5$, $N_g=10$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{phase_trajectories_N5_Ng10000.pdf}\caption{$N=5$, $N_g=10000$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{phase_trajectories_N9_Ng10.pdf}\caption{$N=9$, $N_g=10$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{phase_trajectories_N9_Ng10000.pdf}\caption{$N=9$, $N_g=10000$}\end{subfigure}
+  \caption{Five sampling-seed paths from each of three starting points, overlaid on
+  the exact ground-state $\langle\mathrm{AFM}^2\rangle$ landscape; every line is one
+  actual seed and no mean path is drawn.  For $N=9$ these are the original three
+  randomly drawn points of Sec.~\ref{sec:model}.  For $N=5$ they are instead a
+  performance-informed illustrative selection (starts labelled 3 and 5, plus a
+  replacement start 1) drawn from the ten-point ensemble of
+  Sec.~\ref{sec:performance} and chosen on 2026-09-14 for visual separation and for
+  reaching the ordered region; they are not a statistical sample and do not replace
+  the ten-start ensemble averages reported in Sec.~\ref{sec:performance}.}
+  \label{fig:paths}
+\end{figure}
+
+\FloatBarrier
+\subsection{Performance by epoch and physical shot count}
+\label{sec:performance}
+
+\paragraph{$N=5$ and $N=9$ (expanded ten-start ensembles, 2026-09-15 and 2026-09-16).}
+The panels of Fig.~\ref{fig:performance} and the main $N=5$/$N=9$ panels of
+Fig.~\ref{fig:budget} now use an identical expanded-ensemble protocol at both sizes:
+the ten initial points of Sec.~\ref{sec:model} $\times$ five sampling seeds per point
+(50 paths per $N_g$), replacing the original three-start/five-seed ensemble used for
+performance and budget figures through 14 September 2026 ($N=5$) and 15 September
+2026 ($N=9$).  Because $N_g=10,100,1000,10000$ visit very different physical-shot
+ranges per epoch, they are trained for different lengths -- 5000, 500, 200, and 200
+epochs respectively -- chosen so all four curves cover a common cumulative-shot
+window of roughly $40{,}000$--$200{,}000$ gradient shots under the corrected
+$4N_gN_{\rm epoch}$ convention.  Shaded bands in both sizes' panels are $\pm1$ SEM
+across the ten start-means, each already averaging five seeds, and are not a 95\%
+interval.  At each curve's own final epoch the mean measured order is, for $N=5$,
+$0.887\pm0.018$ ($N_g=10$, epoch 5000), $0.950\pm0.009$ ($N_g=100$, epoch 500),
+$0.802\pm0.077$ ($N_g=1000$, epoch 200), and $0.798\pm0.081$ ($N_g=10000$, epoch
+200); for $N=9$ (completed 2026-09-16, an independent 200-case Raven campaign
+replicating the $N=5$ protocol exactly, Sec.~\ref{sec:reproducibility}),
+$0.745\pm0.040$ ($N_g=10$), $0.898\pm0.037$ ($N_g=100$), $0.718\pm0.117$
+($N_g=1000$), and $0.712\pm0.120$ ($N_g=10000$).  $N=9$'s final measured order is
+lower than $N=5$'s at every $N_g$ (by 0.04--0.14) and carries roughly twice the SEM;
+this is consistent with $N=9$'s previously documented greater training sensitivity
+and initial-condition dependence (see ``The larger chain exposes optimization
+variability'' below) rather than a new anomaly or a convention mismatch, since both
+ensembles now share an identical measurement and uncertainty convention.  As for
+$N=5$, because the higher-$N_g$ curves are capped at only 200 epochs, $N=9$'s
+ensemble also does not show a monotonic epoch-count benefit of larger $N_g$; both
+sizes instead reflect the joint effect of gradient noise and the update budget,
+consistent with the fixed-budget results of Sec.~\ref{sec:budget}.  Both ensembles,
+at both sizes, retain the historical approximate training-state solver of
+Sec.~\ref{sec:solver-accuracy}.  With this addition, the expanded-ensemble
+performance/budget comparison that was previously available only for $N=5$ is now
+complete for both system sizes.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_vs_epoch_N5.pdf}\caption{epochs, $N=5$ (10 starts $\times$5 seeds)}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_vs_gradient_shots_N5.pdf}\caption{$4N_gN_{\rm epoch}$ shots, $N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_vs_epoch_N9.pdf}\caption{epochs, $N=9$ (10 starts $\times$5 seeds)}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_vs_gradient_shots_N9.pdf}\caption{$4N_gN_{\rm epoch}$ shots, $N=9$}\end{subfigure}
+  \caption{Mean measured order parameter with uncertainty bands over all sampled paths
+  per $N_g$.  Both sizes now use the identical expanded ten-start$\times$five-seed
+  ensemble, the same corrected $4N_gN_{\rm epoch}$ physical-shot axis, and the same
+  band convention: $\pm1$ SEM across the ten start-means, each already averaging five
+  seeds; see text.}
+  \label{fig:performance}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_measured_vs_exact_N5.pdf}\caption{$N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{performance_measured_vs_exact_N9.pdf}\caption{$N=9$}\end{subfigure}
+  \caption{Measured (dashed, $N_y=100$ output shots) versus exact free ground-state
+  (solid) $\langle\mathrm{AFM}^2\rangle$ at the same pre-update parameters, averaged
+  over the original three starts $\times$ five seeds for both sizes (this comparison
+  was not extended to either size's expanded ten-start ensemble).  Exact values use a float64 dense diagonalization (\texttt{scipy.linalg.eigh})
+  computed outside the notebook in \texttt{shot\_study/trajectory\_expectations.py},
+  not the approximate training-state solver of Sec.~\ref{sec:solver-accuracy}.  Epochwise RMSE between the
+  two curves is $0.0073$--$0.0078$ for $N=5$ and $0.0050$--$0.0052$ for $N=9$.  At the
+  last plotted (pre-update) epoch the exact means are approximately
+  $(0.7111,0.9009,0.9204,0.9205)$ for $N=5$ and $(0.6089,0.6710,0.7365,0.7085)$ for
+  $N=9$, for $N_g=10,100,1000,10000$ respectively.}
+  \label{fig:measured-exact}
+\end{figure}
+
+\FloatBarrier
+\subsection{Fixed total-shot budgets}
+\label{sec:budget}
+
+The reference Fixed\_TN budget values $5{,}000$, $10{,}000$, $20{,}000$, $50{,}000$,
+and $100{,}000$ are used for the original single-fixed-start datasets at both
+$N=9$ and $N=5$, described immediately below; for each $N_g$ the number of
+completed updates is $\lfloor N_{g,{\rm budget}}/(2N_g)\rfloor$ under that
+(paired-preparation) convention, and points with zero possible updates are left
+blank rather than assigned an artificial initial performance.  Both original
+datasets are superseded, as main-panel figures, by the expanded ten-start
+ensembles described further below.
+
+\paragraph{Original single-fixed-start datasets, $N=9$ and $N=5$ (historical,
+superseded).}
+The optimal fixed shot count is consistently intermediate rather than maximal.  For
+this $N=5$ dataset (single fixed start $(\Omega,\Delta)=(0.5,1.5)$, five seeds, the
+full grid $N_g\in\{10,\dots,10000\}$), the best $N_g$ at budgets
+$(5,10,20,50,100)\times10^3$ is respectively $(20,20,50,20,200)$, with mean exact
+orders $(0.925,0.935,0.988,0.989,0.964)$.  For $N=9$ the corresponding optima are
+$(50,50,100,200,100)$ and $(0.946,0.980,0.942,0.974,0.979)$.  None of these ten
+comparisons selects either $N_g=10$ or $N_g\ge500$: too few shots make each update
+unreliable, whereas too many consume the budget before enough parameter updates can
+be made.  The nonmonotonic movement of the empirical optimum with budget should be
+interpreted at the resolution of five training seeds, rather than as a precisely
+determined scaling law.  Neither dataset is any longer the one plotted as the main
+budget panel in Fig.~\ref{fig:budget} below: $N=5$'s was superseded 2026-09-15 and
+$N=9$'s 2026-09-16, both by the expanded ten-start ensembles described in the next
+two paragraphs.  The $N=5$ dataset is additionally retained in the single-start
+25-seed robustness check further below (Fig.~\ref{fig:budget-noise-check-n5}); the
+$N=9$ dataset has no analogous 25-seed full-grid check, only the narrower
+$N_g\in\{20,50,100,200\}$, $S=50{,}000$ expanded-seed check of
+Fig.~\ref{fig:budget-noise-check} below.
+
+\paragraph{$N=5$ main panel (expanded ten-start ensemble, 2026-09-15, corrected
+$4N_g$ convention).}
+Using the same ten-start$\times$five-seed ensemble as Sec.~\ref{sec:performance}, the
+left panel of Fig.~\ref{fig:budget} instead shows exact ground-state
+$\langle\mathrm{AFM}^2\rangle$ at physical gradient-shot caps $S=10{,}000$,
+$20{,}000$, $40{,}000$, $100{,}000$, and $200{,}000$ (corrected $4N_g$ convention;
+these correspond to the former paired caps $B=S/2$), for only
+$N_g=10,100,1000,10000$ -- the shot counts actually simulated for this ensemble.
+Completed updates are $k=\lfloor S/(4N_g)\rfloor$; cases with $k=0$ are omitted.  Here
+the ranking is essentially reversed from the single-start dataset above: the best
+$N_g$ is $10$ at $S=10{,}000,20{,}000,40{,}000$ (means $0.741,0.779,0.865$) and $100$
+at $S=100{,}000,200{,}000$ (means $0.859,0.947$, versus $0.839,0.886$ for $N_g=10$);
+$N_g=1000$ and $10000$ remain at or below $0.51$ at every budget.  This reversal is
+consistent with a different initial-condition distribution -- the ten-start
+ensemble's mean initial $\langle\mathrm{AFM}^2\rangle$ is 0.370 (range
+0.172--0.863) versus 0.672 for the single fixed start -- combined with the
+per-$N_g$ epoch caps of Sec.~\ref{sec:performance}: at these budgets, $N_g=1000$ and
+$10000$ have completed at most 50 and 5 updates respectively, too few from a harder
+average starting point, whereas $N_g=10,100$ have completed enough updates to
+approach their own late-epoch performance.  This is not a claim that $N_g\ge1000$ is
+generally worse; it reflects this particular budget/epoch-cap combination and
+initial-condition sample, not a re-derivation of the single-start optimum above.
+
+\paragraph{$N=9$ main panel (expanded ten-start ensemble, 2026-09-16, corrected
+$4N_g$ convention).}
+Using the identical shared ten-point$\times$five-seed ensemble (the same ten
+initial points as $N=5$, Sec.~\ref{sec:model}) and the same protocol as the $N=5$
+main panel just described, the right panel of Fig.~\ref{fig:budget} shows the
+analogous $N=9$ result at the same physical gradient-shot caps
+$S=10{,}000,20{,}000,40{,}000,100{,}000,200{,}000$ and the same
+$N_g=10,100,1000,10000$.  The ranking is qualitatively similar to $N=5$ but the
+crossover to the more accurate estimator is delayed: $N_g=10$ is best at
+$S=10{,}000,20{,}000,40{,}000,100{,}000$ (means $0.676,0.682,0.744,0.762$) and only
+$N_g=100$ overtakes it at $S=200{,}000$ (mean $0.898$ versus $0.769$ for
+$N_g=10$); $N_g=1000$ and $10000$ again remain at or below $0.42$ at every budget.
+For $N=5$ the crossover to $N_g=100$ instead already occurs at $S=100{,}000$.  This
+delayed crossover is consistent with $N=9$'s ten-start ensemble having an even
+lower and harder mean initial $\langle\mathrm{AFM}^2\rangle=0.241$ (range
+$0.090$--$0.829$, versus $N=5$'s $0.370$, range $0.172$--$0.863$), computed by
+exact diagonalization at the same ten shared points: from a harder average start,
+$N_g=100$ needs correspondingly more of the fixed shot budget before its
+lower-noise updates catch up with $N_g=10$'s larger number of noisier ones.  As
+for $N=5$, this is not a claim that $N_g\ge1000$ is generally worse, only a
+description of this particular budget/epoch-cap combination and initial-condition
+sample.  With this panel, the fixed-budget comparison of the expanded ensemble --
+previously available only for $N=5$ -- is now complete for both system sizes.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{time_budget_N5.pdf}\caption{$N=5$: 10 starts $\times$5 seeds, $S=4N_gN_{\rm epoch}$ (2026-09-15)}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{time_budget_N9.pdf}\caption{$N=9$: 10 starts $\times$5 seeds, $S=4N_gN_{\rm epoch}$ (2026-09-16)}\end{subfigure}
+  \caption{Exact order at fixed total gradient-shot budgets, for the identical
+  expanded ten-start$\times$five-seed ensemble and the identical corrected
+  $4N_gN_{\rm epoch}$ convention at both sizes.  $N=9$'s curves sit systematically
+  below $N=5$'s at matched $(N_g,S)$, and its crossover to $N_g=100$ occurs at a
+  larger budget; see text for the initial-condition explanation.  The
+  original single-fixed-start datasets and legacy $2N_gN_{\rm epoch}$ convention
+  discussed above are no longer plotted here (for $N=9$'s original dataset, see the
+  Fig.~\ref{fig:budget-noise-check} check below instead; for $N=5$'s, see
+  Fig.~\ref{fig:budget-noise-check-n5}).}
+  \label{fig:budget}
+\end{figure}
+\FloatBarrier
+
+\paragraph{$N=9$ expanded-seed check (original single-fixed-start dataset,
+legacy convention).}
+The conspicuous fall and recovery of the $N=9$, $50{,}000$-shot curve at $N_g=50$
+--from the original single-fixed-start dataset described two paragraphs above, not
+the expanded ten-start ensemble of Fig.~\ref{fig:budget}-- was checked with 20
+additional independent seeds at each of $N_g\in\{20,50,100,200\}$.  The original five-seed means over these four points
+were $(0.953,0.869,0.948,0.974)$, whereas the combined 25-seed means are
+$(0.900,0.927,0.962,0.952)$.  Thus the deep, isolated $N_g=50$ dip is not
+reproduced: the expanded curve rises smoothly through $N_g=100$ and then decreases
+slightly.  Its 95\% confidence intervals are respectively
+$[0.861,0.940]$, $[0.898,0.957]$, $[0.946,0.979]$, and $[0.935,0.970]$.
+Welch tests give $p=0.261$ for $N_g=50$ versus 20 and $p=0.143$ versus 200.
+The $N_g=100$ mean is modestly higher than the $N_g=50$ mean
+($\Delta=0.0348$, unadjusted two-sided $p=0.0389$), so the verification supports
+a broad intermediate optimum but not the original sharp V-shaped feature.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.62\linewidth]{time_budget_N9_noise_check.pdf}
+  \caption{Expanded-seed check at $N=9$ and a total gradient-shot budget of
+  $50{,}000$.  Blue points show combined 25-seed means with 95\% confidence
+  intervals; the dashed grey line is the original five-seed mean.}
+  \label{fig:budget-noise-check}
+\end{figure}
+
+\FloatBarrier
+\paragraph{$N=5$ single-start 25-seed check (2026-09-14).}
+The apparent dips of the original five-seed, single-fixed-start
+$(\Omega,\Delta)=(0.5,1.5)$ budget curves (legacy paired budget $B=50{,}000$ dip at
+$N_g=50$; $B=100{,}000$ dip at $N_g=100$) were checked the same way, with 20
+additional seeds at every $N_g$ and budget.  The $B=50{,}000$, $N_g=50$ mean moves
+from $0.910216$ (5 seeds) to $0.958448$ (new 20 seeds) to $0.948801$ (combined 25);
+its log-$N_g$-neighbour interpolation contrast shrinks from $-0.068188$ to
+$-0.018076$ (95\% percentile-bootstrap interval $[-0.046503,0.008196]$).  The
+$B=100{,}000$, $N_g=100$ mean moves from $0.915755$ to $0.973736$ to $0.962140$; its
+contrast changes from $-0.033573$ to $+0.015520$ (95\% interval
+$[-0.004986,0.034153]$), i.e.\ that dip disappears entirely.  Both results support
+sampling fluctuation in the original five-seed curves, not a corrected optimum and
+not a claim of monotonicity: a small $B=50{,}000$ dip remains at the 25-seed point
+estimate (Fig.~\ref{fig:budget-noise-check-n5}), though its neighbour-contrast
+interval still includes zero.  This single-start dataset and its historical solver
+are distinct from -- and were never mixed into -- the ten-start ensemble of the main
+$N=5$ panel above.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.62\linewidth]{time_budget_N5_25seeds.pdf}
+  \caption{Single-fixed-start $(\Omega,\Delta)=(0.5,1.5)$, 25-seed fixed-budget check
+  for $N=5$ (legacy paired-budget convention, full $N_g\in\{10,\dots,10000\}$ grid).
+  Bands are pointwise bootstrap 95\% intervals.  This is the dataset described in the
+  preceding paragraph, distinct from the ten-start ensemble of Fig.~\ref{fig:budget}.}
+  \label{fig:budget-noise-check-n5}
+\end{figure}
+
+\FloatBarrier
+\subsection{Why adaptive shot counts become attractive}
+
+
+Over the last 50 epochs of the $N_g=1000$ diagnostic, the conditional gradient means
+are $(0.0260,0.00450)$ for $N=5$ and $(0.0133,0.00166)$ for $N=9$, while the
+corresponding finite-shot standard deviations remain $(0.497,0.0991)$ and
+$(0.669,0.105)$.  In particular, the absolute $g_\Omega$ noise is roughly five to six
+times the $g_\Delta$ noise and does not vanish as the signal approaches zero.  Median
+late relative-noise ratios are $(21.1,24.3)$ and $(54.1,70.7)$, explaining the violent
+fluctuations of a fixed-shot estimator near convergence and motivating component-wise
+adaptive shot allocation.
+
+\begin{figure}[ht]
+  \centering
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_moments_during_training_N5.pdf}\caption{$N=5$}\end{subfigure}
+  \begin{subfigure}{0.48\linewidth}\includegraphics[width=\linewidth]{gradient_moments_during_training_N9.pdf}\caption{$N=9$}\end{subfigure}
+  \caption{Conditional gradient signal, finite-shot standard deviation, relative
+  noise, and measured training output for a typical $N_g=1000$ run.}
+  \label{fig:moments}
+\end{figure}
+
+\FloatBarrier
+\section{Discussion and observations}
+
+\paragraph{Gradient noise is the dominant controlled effect.}
+Figure~\ref{fig:gradient-distributions} deliberately removes output-shot noise by using
+the exact ground-state value of $\langle\mathrm{AFM}^2\rangle$ in every call.  The
+resulting agreement with the exact gradient and the fitted $N_g^{-1/2}$ scaling show
+that the broad low-shot distributions are intrinsic to sampling the gradient
+observables, rather than an artefact of a fluctuating target signal.  The training runs
+restore the experimentally relevant $N_y=100$ output measurement, so their scatter
+contains both sources of noise.
+
+\paragraph{Smoothness and efficiency are different questions.}
+Large $N_g$ is unambiguously beneficial when cost is measured in epochs: paths become
+smoother and replicas become more reproducible.  It is not unambiguously beneficial
+when cost is measured in experiments, and exactly which $N_g$ wins depends on the
+ensemble.  For the original single-fixed-start datasets (both $N=9$ and $N=5$), the
+fixed-budget optima sit at $N_g=20$--200: an extremely accurate update can be less
+useful than several moderately noisy updates, and the optimum moves nonmonotonically
+across the five budgets.  For the expanded ten-start ensembles at both sizes
+(Sec.~\ref{sec:performance}--\ref{sec:budget}), by contrast, $N_g=10$ or $100$
+dominate at every tested budget and $N_g\ge1000$ never wins, because those runs are
+additionally capped at only 200 epochs from a harder average starting point.
+Within the expanded ensembles, $N=9$'s crossover from $N_g=10$ to $N_g=100$ is
+delayed to a larger shot budget than $N=5$'s ($S=200{,}000$ versus $S=100{,}000$),
+consistent with $N=9$'s even lower and harder mean initial
+$\langle\mathrm{AFM}^2\rangle$ (0.241 versus 0.370, Sec.~\ref{sec:budget}) rather
+than any difference in methodology.  The qualitative lesson -- an intermediate
+$N_g$ beats the extremes under a fixed shot budget -- is robust across all four
+ensembles, but the specific optimal value is not a universal constant; it depends
+on the initial-condition distribution and the epoch budget actually allotted to
+each $N_g$, not only on the physics of the estimator.
+
+\paragraph{The larger chain exposes optimization variability.}
+The $N=9$ paths become geometrically smoother as $N_g$ grows, but the between-start
+spread of their final performance remains large.  In the expanded ten-start
+ensemble, $N=9$'s final-epoch mean measured order is lower than $N=5$'s at every
+$N_g$ (e.g.\ $0.745\pm0.040$ versus $0.887\pm0.018$ at $N_g=10$) and carries roughly
+twice the SEM (Sec.~\ref{sec:performance}), and $N_g=1000$ again has a slightly
+higher late mean than $N_g=10000$ ($0.718\pm0.117$ versus $0.712\pm0.120$), although
+the difference is far below either quantity's own SEM across the ten starts.  Thus
+suppressing estimator noise cannot by itself eliminate initial-condition sensitivity
+in the more structured landscape, and this sensitivity now shows up consistently in
+both the original and the expanded $N=9$ ensembles.
+
+\paragraph{Shot allocation should be component and time dependent.}
+Near convergence the mean gradients approach zero, while the absolute $g_\Omega$ noise
+stays roughly five to six times larger than the $g_\Delta$ noise.  A single fixed shot
+count therefore over-resolves some updates and under-resolves others.  This is the most
+direct numerical motivation in the study for allocating shots separately by parameter
+and increasing them only when the signal-to-noise ratio requires it.
+
+The numerical scope should nevertheless be kept in view: the distribution study uses
+one parameter point, the original trajectory averages cover three starts and five
+seeds rather than an asymptotic ensemble (ten starts for the expanded $N=5$ and,
+since 2026-09-16, $N=9$ figures), and, as the next subsection details, state
+preparation is an approximate iterative solver, not an exact diagonalization as its
+name suggests.
+
+\subsection{Ground-state solver accuracy}
+\label{sec:solver-accuracy}
+
+Every gradient and every trajectory in this report -- $N=5$ and $N=9$, original and
+expanded -- prepares the free and nudged states with \texttt{QEP.grad.Exact\_Diagonalization},
+which despite its name delegates to \texttt{QEP.model.get\_gs\_sparse}: a fixed
+100-iteration momentum-gradient power iteration from a uniform initial state, with no
+residual convergence check (\texttt{QEP/model.py}).  An independent SciPy float64
+\texttt{eigh} diagonalization of the same saved Hamiltonians at several checkpoints
+found several-percent-level gradient-mean discrepancies, e.g.\ at the first saved
+point for $N=5$: saved (100-iteration) mean $(0.759542,0.364020)$ versus exact
+$(0.752488,0.357070)$; for $N=9$: saved $(1.675777,0.793209)$ versus exact
+$(1.606324,0.757700)$.  A direct convergence check comparing 100/200/500 iterations
+against the same float64 reference gives maximum component-relative mean errors of
+$1.9460\%/0.01696\%/0.000991\%$ at the first $N=5$ checkpoint,
+$3.0509\%/0.03704\%/0.03887\%$ at the last $N=5$ checkpoint (not monotonically
+improving: the late-training small-$\Delta$ signal remains sensitive to float32-level
+numerical precision even at 500 iterations), and $4.6841\%/0.004943\%/0.000121\%$ at
+the first $N=9$ checkpoint.  A separate check found the cross-component correlation
+of independently sampled $g_\Omega,g_\Delta$ to be $-0.001614$ (95\% interval
+$[-0.04493,0.04170]$), ruling out shared-randomness key reuse as an alternative
+explanation for the near-identical relative-noise curves of Fig.~\ref{fig:moments};
+this is a genuine state-preparation accuracy issue, not a sampling artefact (full
+details in \texttt{shot\_study/figure13\_noise\_audit\_2026-09-14.md}).
+
+This bias affects every trajectory, gradient distribution, and performance/budget
+curve in this report through their state preparation.  It does \emph{not} affect the
+independently recomputed exact-reference quantities that this report also uses:
+phase-diagram backgrounds, the endpoint values of Fig.~\ref{fig:paths}, the solid
+curves of Fig.~\ref{fig:measured-exact}, and both panels of Fig.~\ref{fig:budget}
+($N=5$ since 2026-09-15 and $N=9$ since 2026-09-16, the latter via the shared,
+validated \texttt{exact\_solver.py})
+were all evaluated by genuine post-hoc dense diagonalization of the saved trajectory
+parameters, not by this iterative solver -- but those exact endpoints are evaluated
+\emph{on top of} parameter paths that were themselves trained with the approximate
+solver, so they do not certify that the training itself was exact.  We have not
+corrected the training/gradient-sampling solver itself: a fully corrected retraining
+campaign is deferred pending a scope decision on how much compute to spend re-running
+the study and how to avoid mixing corrected-solver trajectories with the existing
+approximate-solver dataset used throughout this report.  A validated, documented,
+reusable exact solver (\texttt{shot\_study/exact\_solver.py}, wrapping the same
+float64 \texttt{scipy.linalg.eigh} lowest-eigenpair approach already used ad hoc in
+several analysis scripts) is now available for that future work and for exact
+endpoint evaluation; it is deliberately not wired into the training loop and has not
+been used to alter any existing trajectory or production data.
+
+\section{Conclusions}
+
+The experiments establish that finite-shot QEP gradients concentrate on their exact
+finite-$\beta$ expectations at the predicted $N_g^{-1/2}$ rate.  Increasing $N_g$
+turns random-walk-like training into smooth motion and improves performance per epoch,
+but an intermediate $N_g$ is superior under fixed measurement budgets in every
+ensemble tested -- $N_g=20$--200 for $N=9$ and $N=5$'s original single-start
+datasets, $N_g=10$--100 for the expanded ten-start ensembles now available at both
+sizes -- rather than either extreme.  Within the expanded ensembles, $N=9$
+consistently trails $N=5$ in final measured order and delays its own crossover to
+$N_g=100$ to a larger shot budget, consistent with $N=9$'s previously documented
+greater optimization sensitivity and its harder mean initial condition, not a
+methodological difference between the two sizes (Secs.~\ref{sec:performance}
+and~\ref{sec:budget}).  Because the residual noise is strongly component dependent
+and eventually dominates the decaying gradient signal, these fixed-shot results
+support adaptive allocation by both parameter and training stage.  Separately, every
+result in this report inherits a quantified, several-percent-level state-preparation
+bias from the approximate 100-iteration ground-state solver used throughout
+(Sec.~\ref{sec:solver-accuracy}); a corrected rerun is future work, not a silent
+correction applied here.  With the 2026-09-16 $N=9$ campaign, the expanded-ensemble
+performance and fixed-budget comparison between $N=5$ and $N=9$ is now complete at
+both system sizes, closing out a comparison previously available only for $N=5$.
+
+\section{Reproducibility and data integrity}
+\label{sec:reproducibility}
+
+The self-contained implementation is in \texttt{AFM\_searching/afm\_shots}; experiment
+drivers, the central configuration, validation, plotting code, and Slurm files are in
+\texttt{AFM\_searching/shot\_study}.  Raw production data are compressed NPZ files in
+\texttt{data/shots\_2026-09-11}; every file contains JSON metadata with the physical
+settings, seed, and whether it is a smoke or production run. Reduced local tests carry
+an explicit \texttt{\_smoke} suffix and are excluded from analysis.  The Raven run used
+  jobs 30179398, 30177302, 30177303, and 30177304 in the dedicated directory
+\texttt{/ptmp/qinwang/notebooks/QEP\_fixed\_shot\_20260911}.  The validator checks all
+226 expected production files, metadata consistency, finite arrays, and the intentional
+zero-update mask before plotting.  The focused budget-noise verification used Zeropoint
+array 8895092 and replacement element 8895181, producing 80 additional production files
+(20 seeds for each of $N_g=20,50,100,200$).  All 80 retained runs completed with exit
+code 0; one non-progressing allocation was intentionally cancelled and rerun on another
+node.  The additional files and their Slurm logs are stored alongside the original data
+and logs, and the reduced statistics are recorded in
+\texttt{budget\_noise\_check\_summary.json}.
+
+The expanded $N=5$ ensemble (Secs.~\ref{sec:performance}--\ref{sec:budget}) was trained
+in a separately isolated Raven root,
+\texttt{/raven/u/qinwang/notebooks/QEP\_overlap\_20260914/QEP\_multiple\_shot}, and
+summarized locally by \texttt{shot\_study/summarize\_overlap.py} into
+\texttt{trajectory\_overlap\_summary\_N5.npz}, which validates completion, metadata,
+shapes, and exact preservation of the original three-start prefixes before any
+figure is drawn from it.  The single-fixed-start 25-seed budget check
+(Fig.~\ref{fig:budget-noise-check-n5}) was produced on Zeropoint arrays 8895474 and
+8895517 and combined locally by \texttt{shot\_study/figure11b\_resampling.py}.  A
+validated, reusable exact ground-state solver for post-hoc analysis --
+\texttt{shot\_study/exact\_solver.py}, discussed in Sec.~\ref{sec:solver-accuracy} --
+is checked against the exact references quoted above for $N=5,9$ at
+$(\Omega,\Delta)=(0.5,1.5)$; it is not used by the production training/sampling
+pipeline described above, and none of the original 226 production files (or the
+subsequent expanded/verification files) were regenerated or altered while producing
+this report revision.
+
+The expanded $N=9$ ensemble (Secs.~\ref{sec:performance}--\ref{sec:budget}) was
+added on 2026-09-16, replicating the $N=5$ campaign's protocol exactly (the same
+10-point$\times$5-seed$\times N_g\in\{10,100,1000,10000\}$ design, the same
+5000/500/200/200 epoch schedule, and the same reused original three-point
+prefixes) via 200 new cases submitted as Raven job 30255973 (25 groups of 8, capped
+at 8 concurrent GPUs) in the same isolated Raven root used for $N=5$.  All 25
+groups completed with exit code \texttt{0:0} and empty error logs; a comprehensive
+log grep for tracebacks, CUDA errors, out-of-memory events, and non-finite values
+found nothing.  The 200 resulting production files were summarized locally (the
+same \texttt{summarize\_overlap.py}, run locally rather than on the cluster because
+the remote conda environment lacked \texttt{threadpoolctl}, mirroring the $N=5$
+precedent) into \texttt{trajectory\_overlap\_summary\_N9.npz}, with a maximum
+eigenpair residual of $5.76\times10^{-14}$, well below the $10^{-9}$ validation
+gate.  \texttt{summarize\_overlap.py} was refactored during this pass to call the
+shared \texttt{exact\_solver.py} instead of its own duplicated diagonalization
+code; this refactor was regression-tested against the existing, already-delivered
+$N=5$ summary (bit-identical arrays, max absolute difference $0.0$) before being
+relied on for the new $N=9$ summary.  Figures 9, 10, and 11b of
+\texttt{figs\_N9.ipynb} were updated to use this expanded ensemble, the corrected
+$4N_gN_{\rm epoch}$ convention, and exact-endpoint diagonalization, matching
+\texttt{figs\_N5.ipynb}; no other cell in either notebook was changed.  Full
+details are recorded in \texttt{GPT\_relay.md} under ``2026-09-16: N=9 expanded
+ensemble (Figures 9, 10, 11b) replicating the N=5 campaign'' and the closing
+dated entry that follows it.
+
+\end{document}

@@ -1,4 +1,4 @@
-# QEP paper figures
+# QEP work
 
 Code and figures for three Quantum Equilibrium Propagation (QEP) studies
 built on the [QEP method](https://www.nature.com/articles/s41467-025-61665-6)
